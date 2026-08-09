@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>OrionFlag</PackageId>
+    <Description>Feature flags for the Orion family that evaluate in-process with zero network per check. Wave 1 is the evaluation core: boolean flags seeded from configuration with an IOptionsMonitor bridge (existing appsettings flags migrate with no code change), per-request snapshots so a flag cannot flip mid-request, and a lock-free allocation-free hot path. OpenTelemetry by default, AOT-clean. Audited EF Core store, redaction, and targeting rules land in later waves.</Description>
+    <PackageTags>orion;feature-flags;feature-management;toggle;dynamic-config;dotnet</PackageTags>
+    <RootNamespace>Moongazing.OrionFlag</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Orion.Abstractions" Version="1.2.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Moongazing.OrionFlag.Tests" />
+  </ItemGroup>
+</Project>
