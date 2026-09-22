@@ -136,9 +136,17 @@ internal sealed class TestOptionsMonitor<T> : IOptionsMonitor<T>
     public void Set(T value)
     {
         CurrentValue = value;
+        Fire(value, null);
+    }
+
+    /// <summary>Reload a *named* options instance, leaving the unnamed one untouched.</summary>
+    public void SetNamed(string name, T value) => Fire(value, name);
+
+    private void Fire(T value, string? name)
+    {
         foreach (var listener in listeners.ToArray())
         {
-            listener(value, null);
+            listener(value, name);
         }
     }
 

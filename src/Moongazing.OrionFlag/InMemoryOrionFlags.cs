@@ -29,7 +29,16 @@ public sealed class InMemoryOrionFlags : IOrionFlags, IDisposable
         ArgumentNullException.ThrowIfNull(diagnostics);
         this.diagnostics = diagnostics;
         snapshot = Build(options.CurrentValue);
-        changeSubscription = options.OnChange(o => snapshot = Build(o));
+        changeSubscription = options.OnChange((o, name) =>
+        {
+            // OnChange fires for *every* named OrionFlagOptions instance, not only the one this
+            // evaluator was seeded from (IOptionsMonitor.CurrentValue is the unnamed instance).
+            // Rebuilding on someone else's named reload would silently serve their flags here.
+            if (string.IsNullOrEmpty(name))
+            {
+                snapshot = Build(o);
+            }
+        });
     }
 
     /// <inheritdoc />

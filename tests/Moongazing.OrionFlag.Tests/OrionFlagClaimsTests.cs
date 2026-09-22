@@ -228,4 +228,17 @@ public sealed class OrionFlagClaimsTests
         string[] expected = ["on=enabled", "off=disabled", "unknown=disabled"];
         Assert.Equal(expected, seen);
     }
+
+    [Fact]
+    public void A_reload_of_a_named_options_instance_does_not_replace_the_default_snapshot()
+    {
+        using var flags = Create(out var monitor, o => o.Flags["a"] = false);
+        Assert.False(flags.IsEnabled("a"));
+
+        // Another component registered OrionFlagOptions under a name (a per-tenant section, say).
+        // Its reload must not reach the evaluator bound to the unnamed instance.
+        monitor.SetNamed("tenant-a", new OrionFlagOptions { Flags = { ["a"] = true } });
+
+        Assert.False(flags.IsEnabled("a"));
+    }
 }
