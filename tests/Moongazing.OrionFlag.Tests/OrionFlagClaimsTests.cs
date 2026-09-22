@@ -31,28 +31,42 @@ public sealed class OrionFlagClaimsTests
     private static OrionFlagOptions Pair(bool value) =>
         new() { Flags = { ["a"] = value, ["b"] = value } };
 
+    /// <summary>
+    /// The fewest bytes <paramref name="body"/> allocated on this thread across several passes.
+    /// "Allocation-free" is a claim about the steady state: tiered compilation can re-enter and
+    /// allocate on the measuring thread once, which is noise, not an allocation in the hot path.
+    /// A path that really does allocate allocates on *every* pass, so the minimum still catches it.
+    /// </summary>
+    private static long FewestBytesAllocatedBy(Action body)
+    {
+        var fewest = long.MaxValue;
+        for (var pass = 0; pass < 5; pass++)
+        {
+            body();
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            body();
+            fewest = Math.Min(fewest, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        return fewest;
+    }
+
     [Fact]
     public void A_snapshot_lookup_allocates_nothing()
     {
         using var flags = Create(out _, o => o.Flags["a"] = true);
         var snapshot = flags.GetSnapshot();
 
-        for (var i = 0; i < HotPathIterations; i++)
+        var allocated = FewestBytesAllocatedBy(() =>
         {
-            _ = snapshot.IsEnabled("a");
-            _ = snapshot.IsEnabled("missing");
-            _ = snapshot.IsEnabled("missing", defaultValue: true);
-        }
+            for (var i = 0; i < HotPathIterations; i++)
+            {
+                _ = snapshot.IsEnabled("a");
+                _ = snapshot.IsEnabled("missing");
+                _ = snapshot.IsEnabled("missing", defaultValue: true);
+            }
+        });
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < HotPathIterations; i++)
-        {
-            _ = snapshot.IsEnabled("a");
-            _ = snapshot.IsEnabled("missing");
-            _ = snapshot.IsEnabled("missing", defaultValue: true);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.True(allocated == 0, $"snapshot lookups allocated {allocated} bytes over {HotPathIterations * 3} reads");
     }
 
@@ -72,20 +86,15 @@ public sealed class OrionFlagClaimsTests
         var monitor = new TestOptionsMonitor<OrionFlagOptions>(new OrionFlagOptions { Flags = { ["a"] = true } });
         using var flags = new InMemoryOrionFlags(monitor, diagnostics);
 
-        for (var i = 0; i < HotPathIterations; i++)
+        var allocated = FewestBytesAllocatedBy(() =>
         {
-            _ = flags.IsEnabled("a");
-            _ = flags.IsEnabled("missing");
-        }
+            for (var i = 0; i < HotPathIterations; i++)
+            {
+                _ = flags.IsEnabled("a");
+                _ = flags.IsEnabled("missing");
+            }
+        });
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < HotPathIterations; i++)
-        {
-            _ = flags.IsEnabled("a");
-            _ = flags.IsEnabled("missing");
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.True(allocated == 0, $"evaluation allocated {allocated} bytes over {HotPathIterations * 2} checks with a listener attached");
     }
 
@@ -94,23 +103,29 @@ public sealed class OrionFlagClaimsTests
     {
         using var flags = Create(out _, o => o.Flags["a"] = true);
 
-        for (var i = 0; i < HotPathIterations; i++)
+        // Same best-of-several shape as FewestBytesAllocatedBy, inline because the body awaits.
+        var allocated = long.MaxValue;
+        for (var pass = 0; pass < 5; pass++)
         {
-            _ = await flags.IsEnabledAsync("a");
+            for (var i = 0; i < HotPathIterations; i++)
+            {
+                _ = await flags.IsEnabledAsync("a");
+            }
+
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < HotPathIterations; i++)
+            {
+                _ = await flags.IsEnabledAsync("a");
+            }
+
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < HotPathIterations; i++)
-        {
-            _ = await flags.IsEnabledAsync("a");
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.True(allocated == 0, $"the async check allocated {allocated} bytes over {HotPathIterations} checks");
     }
 
     [Fact]
-    public async Task Concurrent_reads_never_observe_a_half_applied_update()
+    public void Concurrent_reads_never_observe_a_half_applied_update()
     {
         var monitor = new TestOptionsMonitor<OrionFlagOptions>(Pair(false));
         using var flags = new InMemoryOrionFlags(monitor, new FlagDiagnostics());
@@ -119,11 +134,16 @@ public sealed class OrionFlagClaimsTests
         var torn = 0;
         var reads = 0L;
 
-        var readers = new Task[4];
+        // Dedicated threads rather than the pool: these readers spin, and on a loaded runner the
+        // pool has left them unscheduled until the writer had already finished - a race that
+        // never ran. The read-count assertion below is what caught that.
+        var readers = new Thread[4];
+        using var running = new CountdownEvent(readers.Length);
         for (var r = 0; r < readers.Length; r++)
         {
-            readers[r] = Task.Run(() =>
+            readers[r] = new Thread(() =>
             {
+                running.Signal();
                 while (!Volatile.Read(ref stop))
                 {
                     // Both flags always move together, so a snapshot that disagrees with itself is
@@ -136,16 +156,22 @@ public sealed class OrionFlagClaimsTests
 
                     Interlocked.Increment(ref reads);
                 }
-            });
+            })
+            { IsBackground = true };
+            readers[r].Start();
         }
 
-        for (var i = 0; i < 20_000; i++)
+        running.Wait();
+        for (var i = 0; i < 200_000 && (i < 20_000 || Interlocked.Read(ref reads) < 1_000); i++)
         {
             monitor.Set(Pair(i % 2 == 0));
         }
 
         Volatile.Write(ref stop, true);
-        await Task.WhenAll(readers);
+        foreach (var reader in readers)
+        {
+            reader.Join();
+        }
 
         Assert.True(Interlocked.Read(ref reads) > 1_000, $"only {Interlocked.Read(ref reads)} reads raced the writer; the race was never exercised");
         Assert.Equal(0, Volatile.Read(ref torn));
