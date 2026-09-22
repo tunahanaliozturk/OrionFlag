@@ -241,4 +241,14 @@ public sealed class OrionFlagClaimsTests
 
         Assert.False(flags.IsEnabled("a"));
     }
+
+    [Fact]
+    public async Task A_cancelled_token_cancels_the_async_check()
+    {
+        using var flags = Create(out _, o => o.Flags["a"] = true);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await flags.IsEnabledAsync("a", cts.Token));
+    }
 }

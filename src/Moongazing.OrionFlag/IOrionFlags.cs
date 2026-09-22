@@ -25,7 +25,7 @@ public interface IOrionFlags
 
     /// <summary>Async-shaped flag check; completes synchronously over the in-memory store (durable stores arrive later).</summary>
     /// <param name="flag">The flag name (case-insensitive).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token. An already-cancelled token yields a cancelled result rather than an answer.</param>
     ValueTask<bool> IsEnabledAsync(string flag, CancellationToken cancellationToken = default);
 
     /// <summary>Capture the current flags as an immutable snapshot, stable for the duration you hold it.</summary>

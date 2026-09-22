@@ -60,8 +60,13 @@ public sealed class InMemoryOrionFlags : IOrionFlags, IDisposable
     }
 
     /// <inheritdoc />
-    public ValueTask<bool> IsEnabledAsync(string flag, CancellationToken cancellationToken = default) =>
-        new(IsEnabled(flag));
+    public ValueTask<bool> IsEnabledAsync(string flag, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(flag);
+        return cancellationToken.IsCancellationRequested
+            ? ValueTask.FromCanceled<bool>(cancellationToken)
+            : new ValueTask<bool>(IsEnabled(flag));
+    }
 
     /// <inheritdoc />
     public FlagSnapshot GetSnapshot() => snapshot;
