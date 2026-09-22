@@ -26,6 +26,8 @@ Check(await flags.IsEnabledAsync("checkout.new-flow"), "async check failed");
 
 var snapshot = flags.GetSnapshot();
 Check(snapshot.IsEnabled("checkout.new-flow") && snapshot.Count == 2, "snapshot wrong");
+Check(snapshot.IsDefined("legacy"), "a configured-false flag should still be defined");
+Check(!snapshot.IsDefined("unknown"), "an unconfigured flag should not be defined");
 
 Console.WriteLine("OrionFlag AOT smoke test passed.");
 return 0;

@@ -251,4 +251,30 @@ public sealed class OrionFlagClaimsTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await flags.IsEnabledAsync("a", cts.Token));
     }
+
+    [Fact]
+    public void An_undefined_flag_is_distinguishable_from_a_configured_false()
+    {
+        using var flags = Create(out _, o => o.Flags["configured-off"] = false);
+        var snapshot = flags.GetSnapshot();
+
+        // Both read false, which is exactly why the caller needs a way to tell them apart.
+        Assert.False(snapshot.IsEnabled("configured-off"));
+        Assert.False(snapshot.IsEnabled("typo-in-the-flag-name"));
+
+        Assert.True(snapshot.IsDefined("configured-off"));
+        Assert.False(snapshot.IsDefined("typo-in-the-flag-name"));
+        Assert.Throws<ArgumentException>(() => snapshot.IsDefined(string.Empty));
+    }
+
+    [Fact]
+    public void An_undefined_flag_serves_the_configured_default_even_when_that_default_is_on()
+    {
+        // DefaultWhenMissing = true makes an unknown flag fail *open*. Pinned so the hazard the
+        // README now warns about cannot change silently.
+        using var flags = Create(out _, o => o.DefaultWhenMissing = true);
+
+        Assert.True(flags.IsEnabled("never-configured"));
+        Assert.False(flags.GetSnapshot().IsDefined("never-configured"));
+    }
 }
