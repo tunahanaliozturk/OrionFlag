@@ -6,6 +6,29 @@ All notable changes to OrionFlag are documented in this file. The format is base
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`FlagSnapshot.IsDefined(flag)`** — tells an undefined flag apart from one configured `false`.
+  `IsEnabled` serves `DefaultWhenMissing` for both, so a mistyped kill-switch name reads exactly like
+  "the feature is off" — and with `DefaultWhenMissing = true` it fails *open*. `IsDefined` is the only
+  way a caller can see the difference; the README now says which way a miss fails.
+- Tests that measure rather than assert the claims the README makes: the snapshot lookup, the
+  evaluation hot path with a `MeterListener` attached, and the async check each allocate 0 bytes over
+  10,000 reads (`GC.GetAllocatedBytesForCurrentThread`); four reader threads racing 20,000 snapshot
+  swaps never observe a half-applied update; `orion.flag.evaluations` carries the flag and result tags
+  the docs promise, which the previous telemetry test (a bare measurement count) could not have caught.
+
+### Fixed
+
+- **A reload of a *named* `OrionFlagOptions` instance no longer replaces the evaluator's snapshot.**
+  `IOptionsMonitor.OnChange` fires for every named instance, so an unrelated named section reloading
+  swapped its flags into the evaluator seeded from the unnamed one — a wrong answer with nothing
+  raised. The subscription now rebuilds only for the unnamed instance.
+- **`IsEnabledAsync` honours its `CancellationToken`.** An already-cancelled token was ignored and an
+  answer returned anyway; it now yields a cancelled `ValueTask`. The hot path stays allocation-free.
+
 ## [0.1.0] - 2026-07-29
 
 The first release — the Orion family's Wave 1 feature-flag evaluation core: in-process, from
