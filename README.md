@@ -13,7 +13,7 @@ Teams reach for flags to ship dark, roll out gradually, and kill a bad feature w
 
 ## Features
 
-- **In-process evaluation** — `IsEnabled` reads an immutable `FrozenDictionary` snapshot: lock-free, allocation-free, no network.
+- **In-process evaluation** — `IsEnabled` reads an immutable `FrozenDictionary` snapshot: lock-free, allocation-free, no network. The allocation claim is measured in the suite with `GC.GetAllocatedBytesForCurrentThread()`, including with a `MeterListener` attached.
 - **`IOptionsMonitor` bridge** — flags are `OrionFlagOptions` bound from any config section, so existing `appsettings` boolean flags migrate with no code change and reloads flow through live.
 - **Per-request snapshots** — capture `GetSnapshot()` at the start of a request and a flag can't flip mid-request even if config reloads underneath you.
 - **OpenTelemetry by default** — a `Moongazing.OrionFlag` meter with `orion.flag.evaluations`, tagged by flag and result.
@@ -68,6 +68,16 @@ if (snapshot.IsEnabled("checkout.new-flow")) { /* ... */ }
 // ... even if config reloads here, snapshot does not change ...
 if (snapshot.IsEnabled("checkout.new-flow")) { /* same answer */ }
 ```
+
+An undefined flag is not the same thing as a flag configured `false`, even though both read `false`:
+
+```csharp
+var snapshot = flags.GetSnapshot();
+snapshot.IsEnabled("chekout.new-flow"); // false — but only because the name is a typo
+snapshot.IsDefined("chekout.new-flow"); // false — the flag was never configured at all
+```
+
+`DefaultWhenMissing` decides what a miss serves. Leave it `false` so a mistyped or not-yet-deployed flag **fails closed** — the feature stays off. Setting it `true` makes every unknown name fail *open*, so for a kill switch a typo turns the feature on; `IsDefined` is the only way a caller can tell the two apart.
 
 ## Roadmap
 

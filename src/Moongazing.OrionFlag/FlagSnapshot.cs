@@ -37,6 +37,20 @@ public sealed class FlagSnapshot
         return flags.TryGetValue(flag, out var value) ? value : defaultValue;
     }
 
+    /// <summary>
+    /// Whether <paramref name="flag"/> is actually configured in this snapshot. <see cref="IsEnabled(string)"/>
+    /// cannot distinguish a flag configured <c>false</c> from one that was never defined — both read
+    /// <c>false</c> under the default <see cref="OrionFlagOptions.DefaultWhenMissing"/> — so a mistyped
+    /// kill-switch name looks exactly like "the feature is off". Ask this to tell them apart.
+    /// </summary>
+    /// <param name="flag">The flag name (case-insensitive).</param>
+    /// <returns><c>true</c> when the flag is present, whatever its value.</returns>
+    public bool IsDefined(string flag)
+    {
+        System.ArgumentException.ThrowIfNullOrEmpty(flag);
+        return flags.ContainsKey(flag);
+    }
+
     /// <summary>The number of flags in this snapshot.</summary>
     public int Count => flags.Count;
 

@@ -119,7 +119,7 @@ public sealed class OrionFlagTests
 internal sealed class TestOptionsMonitor<T> : IOptionsMonitor<T>
     where T : class
 {
-    private readonly List<Action<T, string?>> listeners = new();
+    private readonly List<Action<T, string?>> listeners = [];
 
     public TestOptionsMonitor(T value) => CurrentValue = value;
 
@@ -136,9 +136,17 @@ internal sealed class TestOptionsMonitor<T> : IOptionsMonitor<T>
     public void Set(T value)
     {
         CurrentValue = value;
+        Fire(value, null);
+    }
+
+    /// <summary>Reload a *named* options instance, leaving the unnamed one untouched.</summary>
+    public void SetNamed(string name, T value) => Fire(value, name);
+
+    private void Fire(T value, string? name)
+    {
         foreach (var listener in listeners.ToArray())
         {
-            listener(value, null);
+            listener(value, name);
         }
     }
 
