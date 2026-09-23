@@ -119,7 +119,7 @@ public sealed class OrionFlagTests
 internal sealed class TestOptionsMonitor<T> : IOptionsMonitor<T>
     where T : class
 {
-    private readonly List<Action<T, string?>> listeners = new();
+    private readonly List<Action<T, string?>> listeners = [];
 
     public TestOptionsMonitor(T value) => CurrentValue = value;
 

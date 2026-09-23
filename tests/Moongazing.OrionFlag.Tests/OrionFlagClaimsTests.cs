@@ -131,19 +131,22 @@ public sealed class OrionFlagClaimsTests
         using var flags = new InMemoryOrionFlags(monitor, new FlagDiagnostics());
 
         var stop = false;
+        var reloadInProgress = false;
         var torn = 0;
-        var reads = 0L;
+        var overlappingReads = 0L;
 
         // Dedicated threads rather than the pool: these readers spin, and on a loaded runner the
         // pool has left them unscheduled until the writer had already finished - a race that
-        // never ran. The read-count assertion below is what caught that.
+        // never ran. Count only reads made while a reload is in progress, not warm-up reads.
         var readers = new Thread[4];
         using var running = new CountdownEvent(readers.Length);
+        using var start = new ManualResetEventSlim();
         for (var r = 0; r < readers.Length; r++)
         {
             readers[r] = new Thread(() =>
             {
                 running.Signal();
+                start.Wait();
                 while (!Volatile.Read(ref stop))
                 {
                     // Both flags always move together, so a snapshot that disagrees with itself is
@@ -154,7 +157,10 @@ public sealed class OrionFlagClaimsTests
                         Interlocked.Increment(ref torn);
                     }
 
-                    Interlocked.Increment(ref reads);
+                    if (Volatile.Read(ref reloadInProgress))
+                    {
+                        Interlocked.Increment(ref overlappingReads);
+                    }
                 }
             })
             { IsBackground = true };
@@ -162,9 +168,12 @@ public sealed class OrionFlagClaimsTests
         }
 
         running.Wait();
-        for (var i = 0; i < 200_000 && (i < 20_000 || Interlocked.Read(ref reads) < 1_000); i++)
+        start.Set();
+        for (var i = 0; i < 200_000 && (i < 20_000 || Interlocked.Read(ref overlappingReads) < 1_000); i++)
         {
+            Volatile.Write(ref reloadInProgress, true);
             monitor.Set(Pair(i % 2 == 0));
+            Volatile.Write(ref reloadInProgress, false);
         }
 
         Volatile.Write(ref stop, true);
@@ -173,7 +182,8 @@ public sealed class OrionFlagClaimsTests
             reader.Join();
         }
 
-        Assert.True(Interlocked.Read(ref reads) > 1_000, $"only {Interlocked.Read(ref reads)} reads raced the writer; the race was never exercised");
+        Assert.True(Interlocked.Read(ref overlappingReads) >= 1_000,
+            $"only {Interlocked.Read(ref overlappingReads)} reads overlapped reloads; the race was not exercised enough");
         Assert.Equal(0, Volatile.Read(ref torn));
     }
 
