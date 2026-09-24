@@ -45,8 +45,8 @@ public sealed class InMemoryOrionFlags : IOrionFlags, IDisposable
     public bool IsEnabled(string flag)
     {
         ArgumentException.ThrowIfNullOrEmpty(flag);
-        var result = snapshot.IsEnabled(flag);
-        diagnostics.RecordEvaluation(flag, result);
+        var result = snapshot.Evaluate(flag, out var canonicalName);
+        diagnostics.RecordEvaluation(canonicalName ?? FlagDiagnostics.UndefinedFlagTagValue, result, canonicalName is not null);
         return result;
     }
 
@@ -54,8 +54,8 @@ public sealed class InMemoryOrionFlags : IOrionFlags, IDisposable
     public bool IsEnabled(string flag, bool defaultValue)
     {
         ArgumentException.ThrowIfNullOrEmpty(flag);
-        var result = snapshot.IsEnabled(flag, defaultValue);
-        diagnostics.RecordEvaluation(flag, result);
+        var result = snapshot.Evaluate(flag, defaultValue, out var canonicalName);
+        diagnostics.RecordEvaluation(canonicalName ?? FlagDiagnostics.UndefinedFlagTagValue, result, canonicalName is not null);
         return result;
     }
 

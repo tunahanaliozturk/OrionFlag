@@ -1,6 +1,6 @@
 namespace Moongazing.OrionFlag.Diagnostics;
 
-using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
 using Moongazing.Orion.Abstractions.Diagnostics;
@@ -8,10 +8,10 @@ using Moongazing.Orion.Abstractions.Diagnostics;
 /// <summary>
 /// OpenTelemetry instrumentation for flag evaluation. Built on the Orion family's
 /// <see cref="OrionInstrumentation"/> spine: a <see cref="Meter"/> named <c>Moongazing.OrionFlag</c>
-/// (subscribe by that name) carrying the <c>orion.flag.evaluations</c> counter, tagged with the flag
-/// name (low cardinality — bounded by the number of flags) and the result. Recording uses the
-/// discrete-tag counter overload with string tag values, so it allocates nothing on the evaluation
-/// hot path and is a cheap early-out when no listener is attached.
+/// (subscribe by that name) carrying the <c>orion.flag.evaluations</c> counter. Tags contain the
+/// configured canonical name (bounded by the number of flags) or one undefined-name value, the
+/// result, and defined status. A stack-backed <see cref="TagList"/> with string tag values keeps
+/// the evaluation hot path allocation-free and cheap when no listener is attached.
 /// <para>A process-wide <see cref="Shared"/> instance makes telemetry emit by default.</para>
 /// </summary>
 public sealed class FlagDiagnostics : OrionInstrumentation
@@ -22,8 +22,14 @@ public sealed class FlagDiagnostics : OrionInstrumentation
     /// <summary>The tag key carrying the evaluated flag name.</summary>
     public const string FlagTagKey = "orion.flag.flag";
 
+    /// <summary>The tag value used for any flag that is not configured.</summary>
+    public const string UndefinedFlagTagValue = "<undefined>";
+
     /// <summary>The tag key carrying the evaluation result.</summary>
     public const string ResultTagKey = "orion.flag.result";
+
+    /// <summary>The tag key distinguishing configured flags from undefined names.</summary>
+    public const string DefinedTagKey = "orion.flag.defined";
 
     private static readonly System.Lazy<FlagDiagnostics> SharedInstance =
         new(static () => new FlagDiagnostics());
@@ -47,9 +53,16 @@ public sealed class FlagDiagnostics : OrionInstrumentation
     /// <summary>Record one evaluation of <paramref name="flag"/> resolving to <paramref name="enabled"/>.</summary>
     /// <param name="flag">The evaluated flag name.</param>
     /// <param name="enabled">The result.</param>
-    public void RecordEvaluation(string flag, bool enabled) =>
-        Evaluations.Add(
-            1,
-            new KeyValuePair<string, object?>(FlagTagKey, flag),
-            new KeyValuePair<string, object?>(ResultTagKey, enabled ? "enabled" : "disabled"));
+    public void RecordEvaluation(string flag, bool enabled) => RecordEvaluation(flag, enabled, defined: true);
+
+    internal void RecordEvaluation(string flag, bool enabled, bool defined)
+    {
+        var tags = new TagList
+        {
+            { FlagTagKey, flag },
+            { ResultTagKey, enabled ? "enabled" : "disabled" },
+            { DefinedTagKey, defined ? "true" : "false" },
+        };
+        Evaluations.Add(1, in tags);
+    }
 }

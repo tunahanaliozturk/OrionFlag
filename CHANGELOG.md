@@ -22,6 +22,11 @@ All notable changes to OrionFlag are documented in this file. The format is base
 
 ### Fixed
 
+- **Evaluation metric tags stay bounded by configured flags.** Unknown names share a single
+  `<undefined>` tag; case variants of a known name use its configured spelling. A `defined` tag
+  distinguishes the reserved-looking label from a configured flag with that literal name. Previously,
+  1,000 distinct misses produced 1,000 distinct tag values. Snapshot reads remain uninstrumented
+  and are documented separately.
 - **A reload of a *named* `OrionFlagOptions` instance no longer replaces the evaluator's snapshot.**
   `IOptionsMonitor.OnChange` fires for every named instance, so an unrelated named section reloading
   swapped its flags into the evaluator seeded from the unnamed one — a wrong answer with nothing

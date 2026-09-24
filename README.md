@@ -16,7 +16,7 @@ Teams reach for flags to ship dark, roll out gradually, and kill a bad feature w
 - **In-process evaluation** — `IsEnabled` reads an immutable `FrozenDictionary` snapshot: lock-free, allocation-free, no network. The allocation claim is measured in the suite with `GC.GetAllocatedBytesForCurrentThread()`, including with a `MeterListener` attached.
 - **`IOptionsMonitor` bridge** — flags are `OrionFlagOptions` bound from any config section, so existing `appsettings` boolean flags migrate with no code change and reloads flow through live.
 - **Per-request snapshots** — capture `GetSnapshot()` at the start of a request and a flag can't flip mid-request even if config reloads underneath you.
-- **OpenTelemetry by default** — a `Moongazing.OrionFlag` meter with `orion.flag.evaluations`, tagged by flag and result.
+- **OpenTelemetry by default** — a `Moongazing.OrionFlag` meter with `orion.flag.evaluations`, tagged by the configured flag name, result, and defined status. Undefined names share a `<undefined>` label, so dynamic misses cannot create one metric series per input; `orion.flag.defined` distinguishes a configured flag literally named `<undefined>` from a miss. Direct `FlagSnapshot` reads are currently not instrumented.
 - **AOT- and trim-clean**, verified by a native-binary smoke test in CI. Multi-targets `net8.0`, `net9.0`, `net10.0`.
 
 ## Install
