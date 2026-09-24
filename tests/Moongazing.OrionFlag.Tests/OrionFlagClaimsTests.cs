@@ -261,8 +261,125 @@ public sealed class OrionFlagClaimsTests
         flags.IsEnabled("off");
         flags.IsEnabled("unknown");
 
-        string[] expected = ["on=enabled", "off=disabled", "unknown=disabled"];
+        string[] expected = ["on=enabled", "off=disabled", "<undefined>=disabled"];
         Assert.Equal(expected, seen);
+    }
+
+    [Fact]
+    public void Unknown_names_do_not_create_one_metric_series_per_input()
+    {
+        using var diagnostics = new FlagDiagnostics();
+        var observed = new HashSet<string>(StringComparer.Ordinal);
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (OrionInstrumentation.ListensTo(instrument, diagnostics))
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == FlagDiagnostics.FlagTagKey)
+                {
+                    observed.Add((string)tag.Value!);
+                }
+            }
+        });
+        listener.Start();
+
+        var monitor = new TestOptionsMonitor<OrionFlagOptions>(new OrionFlagOptions());
+        using var flags = new InMemoryOrionFlags(monitor, diagnostics);
+        for (var i = 0; i < 1_000; i++)
+        {
+            flags.IsEnabled($"request-supplied-{i}");
+        }
+
+        Assert.True(observed.Count == 1, $"Unknown inputs generated {observed.Count} metric tag values.");
+        Assert.Contains("<undefined>", observed);
+    }
+
+    [Fact]
+    public void Case_variants_of_a_known_flag_use_its_configured_metric_name()
+    {
+        using var diagnostics = new FlagDiagnostics();
+        var observed = new HashSet<string>(StringComparer.Ordinal);
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (OrionInstrumentation.ListensTo(instrument, diagnostics))
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == FlagDiagnostics.FlagTagKey)
+                {
+                    observed.Add((string)tag.Value!);
+                }
+            }
+        });
+        listener.Start();
+
+        var monitor = new TestOptionsMonitor<OrionFlagOptions>(new OrionFlagOptions { Flags = { ["NewFlow"] = true } });
+        using var flags = new InMemoryOrionFlags(monitor, diagnostics);
+        Assert.True(flags.IsEnabled("newflow"));
+        Assert.True(flags.IsEnabled("NEWFLOW"));
+        Assert.True(flags.IsEnabled("NewFlow"));
+
+        Assert.Equal(["NewFlow"], observed);
+    }
+
+    [Fact]
+    public void Defined_tag_separates_a_literal_undefined_name_from_a_miss()
+    {
+        using var diagnostics = new FlagDiagnostics();
+        var observed = new List<(string? Name, string? Defined)>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (OrionInstrumentation.ListensTo(instrument, diagnostics))
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            string? name = null;
+            string? defined = null;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == FlagDiagnostics.FlagTagKey)
+                {
+                    name = tag.Value as string;
+                }
+                else if (tag.Key == FlagDiagnostics.DefinedTagKey)
+                {
+                    defined = tag.Value as string;
+                }
+            }
+
+            observed.Add((name, defined));
+        });
+        listener.Start();
+
+        var monitor = new TestOptionsMonitor<OrionFlagOptions>(new OrionFlagOptions { Flags = { ["<undefined>"] = true } });
+        using var flags = new InMemoryOrionFlags(monitor, diagnostics);
+        Assert.True(flags.IsEnabled("<undefined>"));
+        Assert.False(flags.IsEnabled("missing"));
+
+        Assert.Equal([("<undefined>", "true"), ("<undefined>", "false")], observed);
     }
 
     [Fact]
