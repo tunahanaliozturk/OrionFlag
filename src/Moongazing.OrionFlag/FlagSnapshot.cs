@@ -4,6 +4,8 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 
+using Moongazing.OrionFlag.Diagnostics;
+
 /// <summary>
 /// An immutable, point-in-time view of every flag. Capturing a snapshot at the start of a request and
 /// querying it throughout guarantees a flag cannot flip mid-request even if the underlying config
@@ -14,11 +16,13 @@ public sealed class FlagSnapshot
 {
     private readonly FrozenDictionary<string, FlagValue> flags;
     private readonly bool defaultWhenMissing;
+    private readonly FlagDiagnostics diagnostics;
 
-    internal FlagSnapshot(FrozenDictionary<string, FlagValue> flags, bool defaultWhenMissing)
+    internal FlagSnapshot(FrozenDictionary<string, FlagValue> flags, bool defaultWhenMissing, FlagDiagnostics diagnostics)
     {
         this.flags = flags;
         this.defaultWhenMissing = defaultWhenMissing;
+        this.diagnostics = diagnostics;
     }
 
     /// <summary>Whether <paramref name="flag"/> is on in this snapshot, or the snapshot default if it is unknown.</summary>
@@ -26,7 +30,9 @@ public sealed class FlagSnapshot
     public bool IsEnabled(string flag)
     {
         System.ArgumentException.ThrowIfNullOrEmpty(flag);
-        return Evaluate(flag, out _);
+        var result = Evaluate(flag, out var canonicalName);
+        diagnostics.RecordEvaluation(canonicalName ?? FlagDiagnostics.UndefinedFlagTagValue, result, canonicalName is not null);
+        return result;
     }
 
     /// <summary>Whether <paramref name="flag"/> is on, or the explicit <paramref name="defaultValue"/> if it is unknown.</summary>
@@ -35,7 +41,9 @@ public sealed class FlagSnapshot
     public bool IsEnabled(string flag, bool defaultValue)
     {
         System.ArgumentException.ThrowIfNullOrEmpty(flag);
-        return Evaluate(flag, defaultValue, out _);
+        var result = Evaluate(flag, defaultValue, out var canonicalName);
+        diagnostics.RecordEvaluation(canonicalName ?? FlagDiagnostics.UndefinedFlagTagValue, result, canonicalName is not null);
+        return result;
     }
 
     /// <summary>
@@ -70,13 +78,13 @@ public sealed class FlagSnapshot
         return defaultValue;
     }
 
-    internal static FlagSnapshot From(IReadOnlyDictionary<string, bool> source, bool defaultWhenMissing)
+    internal static FlagSnapshot From(IReadOnlyDictionary<string, bool> source, bool defaultWhenMissing, FlagDiagnostics diagnostics)
     {
         var frozen = source.ToFrozenDictionary(
             static pair => pair.Key,
             static pair => new FlagValue(pair.Value, pair.Key),
             StringComparer.OrdinalIgnoreCase);
-        return new FlagSnapshot(frozen, defaultWhenMissing);
+        return new FlagSnapshot(frozen, defaultWhenMissing, diagnostics);
     }
 
     internal readonly record struct FlagValue(bool Enabled, string Name);
