@@ -8,8 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Orion.Abstractions" Version="1.2.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.12" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Moongazing.OrionFlag.Tests" />
