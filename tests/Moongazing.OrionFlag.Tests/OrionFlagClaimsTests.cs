@@ -52,9 +52,24 @@ public sealed class OrionFlagClaimsTests
     }
 
     [Fact]
-    public void A_snapshot_lookup_allocates_nothing()
+    public void A_snapshot_lookup_allocates_nothing_with_a_meter_listener()
     {
-        using var flags = Create(out _, o => o.Flags["a"] = true);
+        using var diagnostics = new FlagDiagnostics();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (OrionInstrumentation.ListensTo(instrument, diagnostics))
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>(static (_, _, _, _) => { });
+        listener.Start();
+
+        var monitor = new TestOptionsMonitor<OrionFlagOptions>(new OrionFlagOptions { Flags = { ["a"] = true } });
+        using var flags = new InMemoryOrionFlags(monitor, diagnostics);
         var snapshot = flags.GetSnapshot();
 
         var allocated = FewestBytesAllocatedBy(() =>
@@ -200,6 +215,43 @@ public sealed class OrionFlagClaimsTests
 
         Assert.False(pinned.IsEnabled("a"));
         Assert.True(flags.IsEnabled("a"));
+    }
+
+    [Fact]
+    public void A_pinned_snapshot_records_its_own_stable_decision()
+    {
+        using var diagnostics = new FlagDiagnostics();
+        var seen = new List<string>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (OrionInstrumentation.ListensTo(instrument, diagnostics))
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == FlagDiagnostics.ResultTagKey)
+                {
+                    seen.Add((string)tag.Value!);
+                }
+            }
+        });
+        listener.Start();
+
+        var monitor = new TestOptionsMonitor<OrionFlagOptions>(new OrionFlagOptions { Flags = { ["a"] = false } });
+        using var flags = new InMemoryOrionFlags(monitor, diagnostics);
+        var pinned = flags.GetSnapshot();
+        monitor.Set(new OrionFlagOptions { Flags = { ["a"] = true } });
+
+        Assert.False(pinned.IsEnabled("a"));
+        Assert.True(flags.IsEnabled("a"));
+        Assert.Equal(["disabled", "enabled"], seen);
     }
 
     [Fact]

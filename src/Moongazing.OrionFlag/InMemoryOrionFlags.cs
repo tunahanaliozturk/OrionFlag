@@ -42,22 +42,10 @@ public sealed class InMemoryOrionFlags : IOrionFlags, IDisposable
     }
 
     /// <inheritdoc />
-    public bool IsEnabled(string flag)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(flag);
-        var result = snapshot.Evaluate(flag, out var canonicalName);
-        diagnostics.RecordEvaluation(canonicalName ?? FlagDiagnostics.UndefinedFlagTagValue, result, canonicalName is not null);
-        return result;
-    }
+    public bool IsEnabled(string flag) => snapshot.IsEnabled(flag);
 
     /// <inheritdoc />
-    public bool IsEnabled(string flag, bool defaultValue)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(flag);
-        var result = snapshot.Evaluate(flag, defaultValue, out var canonicalName);
-        diagnostics.RecordEvaluation(canonicalName ?? FlagDiagnostics.UndefinedFlagTagValue, result, canonicalName is not null);
-        return result;
-    }
+    public bool IsEnabled(string flag, bool defaultValue) => snapshot.IsEnabled(flag, defaultValue);
 
     /// <inheritdoc />
     public ValueTask<bool> IsEnabledAsync(string flag, CancellationToken cancellationToken = default)
@@ -74,6 +62,6 @@ public sealed class InMemoryOrionFlags : IOrionFlags, IDisposable
     /// <inheritdoc />
     public void Dispose() => changeSubscription?.Dispose();
 
-    private static FlagSnapshot Build(OrionFlagOptions options) =>
-        FlagSnapshot.From(options.Flags, options.DefaultWhenMissing);
+    private FlagSnapshot Build(OrionFlagOptions options) =>
+        FlagSnapshot.From(options.Flags, options.DefaultWhenMissing, diagnostics);
 }
