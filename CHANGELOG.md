@@ -8,6 +8,14 @@ All notable changes to OrionFlag are documented in this file. The format is base
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-24
+
+Stable release of the in-process evaluation core. Existing boolean flags retain their v0.1.0
+behavior; subject-based percentage rollouts are opt-in. The release includes the fixes below,
+multi-target tests on .NET 8/9/10, NativeAOT smoke coverage, and a direct/transitive NuGet audit
+with no known vulnerable packages at release time. EF Core persistence, rule-based targeting,
+and a management API remain future work, not features of this release.
+
 ### Changed
 
 - Updated Microsoft.Extensions.DependencyInjection.Abstractions and Microsoft.Extensions.Options
