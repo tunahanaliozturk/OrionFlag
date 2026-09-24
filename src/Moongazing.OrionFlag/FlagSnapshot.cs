@@ -1,8 +1,11 @@
 namespace Moongazing.OrionFlag;
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 
 using Moongazing.OrionFlag.Diagnostics;
 
@@ -15,12 +18,14 @@ using Moongazing.OrionFlag.Diagnostics;
 public sealed class FlagSnapshot
 {
     private readonly FrozenDictionary<string, FlagValue> flags;
+    private readonly FrozenDictionary<string, RolloutValue> rollouts;
     private readonly bool defaultWhenMissing;
     private readonly FlagDiagnostics diagnostics;
 
-    internal FlagSnapshot(FrozenDictionary<string, FlagValue> flags, bool defaultWhenMissing, FlagDiagnostics diagnostics)
+    internal FlagSnapshot(FrozenDictionary<string, FlagValue> flags, FrozenDictionary<string, RolloutValue> rollouts, bool defaultWhenMissing, FlagDiagnostics diagnostics)
     {
         this.flags = flags;
+        this.rollouts = rollouts;
         this.defaultWhenMissing = defaultWhenMissing;
         this.diagnostics = diagnostics;
     }
@@ -42,6 +47,34 @@ public sealed class FlagSnapshot
     {
         System.ArgumentException.ThrowIfNullOrEmpty(flag);
         var result = Evaluate(flag, defaultValue, out var canonicalName);
+        diagnostics.RecordEvaluation(canonicalName ?? FlagDiagnostics.UndefinedFlagTagValue, result, canonicalName is not null);
+        return result;
+    }
+
+    /// <summary>
+    /// Evaluate a flag for a stable subject identity. A configured <c>false</c> always wins;
+    /// an enabled flag without a rollout serves <c>true</c>. Unknown flags use the snapshot default.
+    /// The subject is used only for local hashing and is never recorded in metric tags.
+    /// </summary>
+    public bool IsEnabledFor(string flag, string subject)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(flag);
+        ArgumentException.ThrowIfNullOrEmpty(subject);
+
+        bool result;
+        string? canonicalName;
+        if (flags.TryGetValue(flag, out var value))
+        {
+            canonicalName = value.Name;
+            result = value.Enabled && (!rollouts.TryGetValue(flag, out var rollout)
+                || InRollout(value.Name, subject, rollout));
+        }
+        else
+        {
+            canonicalName = null;
+            result = defaultWhenMissing;
+        }
+
         diagnostics.RecordEvaluation(canonicalName ?? FlagDiagnostics.UndefinedFlagTagValue, result, canonicalName is not null);
         return result;
     }
@@ -78,14 +111,71 @@ public sealed class FlagSnapshot
         return defaultValue;
     }
 
-    internal static FlagSnapshot From(IReadOnlyDictionary<string, bool> source, bool defaultWhenMissing, FlagDiagnostics diagnostics)
+    internal static FlagSnapshot From(
+        IReadOnlyDictionary<string, bool> source,
+        IReadOnlyDictionary<string, PercentageRolloutOptions> rolloutSource,
+        bool defaultWhenMissing,
+        FlagDiagnostics diagnostics)
     {
         var frozen = source.ToFrozenDictionary(
             static pair => pair.Key,
             static pair => new FlagValue(pair.Value, pair.Key),
             StringComparer.OrdinalIgnoreCase);
-        return new FlagSnapshot(frozen, defaultWhenMissing, diagnostics);
+        var validated = new Dictionary<string, RolloutValue>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, rollout) in rolloutSource)
+        {
+            if (!frozen.ContainsKey(name))
+            {
+                throw new ArgumentException($"Rollout '{name}' has no corresponding flag.", nameof(rolloutSource));
+            }
+
+            if (rollout is null || rollout.Percentage is < 0 or > 100 || rollout.Salt is null)
+            {
+                throw new ArgumentException($"Rollout '{name}' requires a percentage from 0 to 100 and a non-null salt.", nameof(rolloutSource));
+            }
+
+            validated.Add(name, new RolloutValue(rollout.Percentage, rollout.Salt));
+        }
+
+        return new FlagSnapshot(frozen, validated.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase), defaultWhenMissing, diagnostics);
+    }
+
+    private static bool InRollout(string name, string subject, RolloutValue rollout)
+    {
+        if (rollout.Percentage == 0)
+        {
+            return false;
+        }
+
+        if (rollout.Percentage == 100)
+        {
+            return true;
+        }
+
+        // Length-prefix each UTF-8 component so distinct triples cannot alias. SHA-256 is stable
+        // across processes and runtime versions; string.GetHashCode is intentionally not.
+        var nameBytes = Encoding.UTF8.GetBytes(name);
+        var saltBytes = Encoding.UTF8.GetBytes(rollout.Salt);
+        var subjectBytes = Encoding.UTF8.GetBytes(subject);
+        var input = new byte[checked(12 + nameBytes.Length + saltBytes.Length + subjectBytes.Length)];
+        var offset = 0;
+        WritePart(nameBytes);
+        WritePart(saltBytes);
+        WritePart(subjectBytes);
+        var digest = SHA256.HashData(input);
+        var bucket = BinaryPrimitives.ReadUInt64BigEndian(digest) % 10_000;
+        return bucket < (uint)(rollout.Percentage * 100);
+
+        void WritePart(byte[] part)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(offset, 4), part.Length);
+            offset += 4;
+            part.CopyTo(input, offset);
+            offset += part.Length;
+        }
     }
 
     internal readonly record struct FlagValue(bool Enabled, string Name);
+
+    internal readonly record struct RolloutValue(int Percentage, string Salt);
 }

@@ -17,6 +17,11 @@ All notable changes to OrionFlag are documented in this file. The format is base
 
 ### Added
 
+- **Stable subject-based percentage rollout.** `OrionFlagOptions.Rollouts` configures 0–100% for an
+  enabled boolean flag, with an optional salt; `IOrionFlags.IsEnabledFor` and
+  `FlagSnapshot.IsEnabledFor` use a deterministic SHA-256 cohort. The existing context-free
+  `IsEnabled` behavior and allocation-free hot path are unchanged. Invalid rollout configurations
+  fail rather than silently returning the wrong cohort; subject IDs are not emitted as metric tags.
 - **`FlagSnapshot.IsDefined(flag)`** — tells an undefined flag apart from one configured `false`.
   `IsEnabled` serves `DefaultWhenMissing` for both, so a mistyped kill-switch name reads exactly like
   "the feature is off" — and with `DefaultWhenMissing = true` it fails *open*. `IsDefined` is the only
