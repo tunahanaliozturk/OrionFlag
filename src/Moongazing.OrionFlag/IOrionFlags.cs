@@ -23,6 +23,10 @@ public interface IOrionFlags
     /// <param name="defaultValue">The value to return when the flag is not present.</param>
     bool IsEnabled(string flag, bool defaultValue);
 
+    /// <summary>Evaluate an enabled flag's stable percentage rollout for a subject.</summary>
+    /// <remarks>Implementers can keep using their existing snapshot implementation.</remarks>
+    bool IsEnabledFor(string flag, string subject) => GetSnapshot().IsEnabledFor(flag, subject);
+
     /// <summary>Async-shaped flag check; completes synchronously over the in-memory store (durable stores arrive later).</summary>
     /// <param name="flag">The flag name (case-insensitive).</param>
     /// <param name="cancellationToken">Cancellation token. An already-cancelled token yields a cancelled result rather than an answer.</param>

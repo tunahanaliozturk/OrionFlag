@@ -48,6 +48,9 @@ public sealed class InMemoryOrionFlags : IOrionFlags, IDisposable
     public bool IsEnabled(string flag, bool defaultValue) => snapshot.IsEnabled(flag, defaultValue);
 
     /// <inheritdoc />
+    public bool IsEnabledFor(string flag, string subject) => snapshot.IsEnabledFor(flag, subject);
+
+    /// <inheritdoc />
     public ValueTask<bool> IsEnabledAsync(string flag, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(flag);
@@ -63,5 +66,5 @@ public sealed class InMemoryOrionFlags : IOrionFlags, IDisposable
     public void Dispose() => changeSubscription?.Dispose();
 
     private FlagSnapshot Build(OrionFlagOptions options) =>
-        FlagSnapshot.From(options.Flags, options.DefaultWhenMissing, diagnostics);
+        FlagSnapshot.From(options.Flags, options.Rollouts, options.DefaultWhenMissing, diagnostics);
 }

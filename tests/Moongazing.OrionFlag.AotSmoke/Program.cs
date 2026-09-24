@@ -12,6 +12,8 @@ using Moongazing.OrionFlag.Diagnostics;
 var options = new OrionFlagOptions { DefaultWhenMissing = false };
 options.Flags["checkout.new-flow"] = true;
 options.Flags["legacy"] = false;
+options.Flags["rollout"] = true;
+options.Rollouts["rollout"] = new PercentageRolloutOptions { Percentage = 50, Salt = "v1" };
 
 using var diagnostics = new FlagDiagnostics();
 Check(diagnostics.Meter.Name == FlagDiagnostics.MeterName, "meter name wrong");
@@ -25,7 +27,8 @@ Check(flags.IsEnabled("unknown", defaultValue: true), "explicit default should w
 Check(await flags.IsEnabledAsync("checkout.new-flow"), "async check failed");
 
 var snapshot = flags.GetSnapshot();
-Check(snapshot.IsEnabled("checkout.new-flow") && snapshot.Count == 2, "snapshot wrong");
+Check(snapshot.IsEnabled("checkout.new-flow") && snapshot.Count == 3, "snapshot wrong");
+Check(snapshot.IsEnabledFor("rollout", "customer-1") == flags.IsEnabledFor("rollout", "customer-1"), "rollout decision was not stable");
 Check(snapshot.IsDefined("legacy"), "a configured-false flag should still be defined");
 Check(!snapshot.IsDefined("unknown"), "an unconfigured flag should not be defined");
 

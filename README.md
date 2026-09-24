@@ -16,6 +16,7 @@ Teams reach for flags to ship dark, roll out gradually, and kill a bad feature w
 - **In-process evaluation** — `IsEnabled` reads an immutable `FrozenDictionary` snapshot: lock-free, allocation-free, no network. The allocation claim is measured in the suite with `GC.GetAllocatedBytesForCurrentThread()`, including with a `MeterListener` attached.
 - **`IOptionsMonitor` bridge** — flags are `OrionFlagOptions` bound from any config section, so existing `appsettings` boolean flags migrate with no code change and reloads flow through live.
 - **Per-request snapshots** — capture `GetSnapshot()` at the start of a request and a flag can't flip mid-request even if config reloads underneath you.
+- **Stable percentage rollout** — `IsEnabledFor(flag, subject)` gives a subject the same cohort across requests, snapshots, and processes. A disabled boolean flag always wins; the existing `IsEnabled` API is unchanged. Rollouts use SHA-256 over length-prefixed UTF-8 flag name, salt, and subject; no subject identifier is emitted as a metric tag.
 - **OpenTelemetry by default** — a `Moongazing.OrionFlag` meter with `orion.flag.evaluations`, tagged by the configured flag name, result, and defined status. Undefined names share a `<undefined>` label, so dynamic misses cannot create one metric series per input; `orion.flag.defined` distinguishes a configured flag literally named `<undefined>` from a miss. Both live and pinned-snapshot decisions are recorded once.
 - **AOT- and trim-clean**, verified by a native-binary smoke test in CI. Multi-targets `net8.0`, `net9.0`, `net10.0`.
 
@@ -42,7 +43,8 @@ services.Configure<OrionFlagOptions>(Configuration.GetSection("OrionFlags"));
 // appsettings.json
 "OrionFlags": {
   "DefaultWhenMissing": false,
-  "Flags": { "checkout.new-flow": true, "legacy-import": false }
+  "Flags": { "checkout.new-flow": true, "legacy-import": false },
+  "Rollouts": { "checkout.new-flow": { "Percentage": 25, "Salt": "launch-1" } }
 }
 ```
 
@@ -69,6 +71,15 @@ if (snapshot.IsEnabled("checkout.new-flow")) { /* ... */ }
 if (snapshot.IsEnabled("checkout.new-flow")) { /* same answer */ }
 ```
 
+For a gradual rollout, pass a stable, non-empty subject key (for example your internal customer ID):
+
+```csharp
+var snapshot = flags.GetSnapshot();
+if (snapshot.IsEnabledFor("checkout.new-flow", customer.Id)) { /* new path */ }
+```
+
+`Percentage` is a whole number from 0 to 100. The configured boolean flag is the kill switch: `false` disables everyone; `true` without a rollout enables everyone. `IsEnabled(flag)` remains the context-free boolean check and does **not** apply the rollout, so call `IsEnabledFor` at every subject-specific decision point. A rollout referencing an absent flag or an out-of-range percentage fails configuration. Change `Salt` only when you intentionally want to reshuffle cohorts. This is a deterministic rollout, not an authorization boundary or an experiment analytics service; do not use it for security decisions.
+
 An undefined flag is not the same thing as a flag configured `false`, even though both read `false`:
 
 ```csharp
@@ -81,7 +92,7 @@ snapshot.IsDefined("chekout.new-flow"); // false — the flag was never configur
 
 ## Roadmap
 
-This is the **Wave 1** foundation (v0.1): in-process boolean flag evaluation from configuration, the `IOptionsMonitor` bridge, per-request snapshots, and telemetry. Later waves add an EF Core store with audited writes via [OrionAudit](https://github.com/tunahanaliozturk/OrionAudit) and sensitive values redacted through [OrionShade](https://github.com/tunahanaliozturk/OrionShade) plus scheduled flags on [OrionClock](https://github.com/tunahanaliozturk/OrionClock) (W2), a targeting-rule engine with percentage rollout and stable bucketing plus a minimal-API `.RequireFlag(...)` filter and A/B variants (W3), and typed dynamic config with a management API (W4, GA). See [CHANGELOG.md](CHANGELOG.md).
+The in-process core now includes boolean flags, reloadable snapshots, telemetry, and stable percentage rollout. Planned work: an EF Core store with audited writes via [OrionAudit](https://github.com/tunahanaliozturk/OrionAudit), sensitive values redacted through [OrionShade](https://github.com/tunahanaliozturk/OrionShade), scheduled flags on [OrionClock](https://github.com/tunahanaliozturk/OrionClock), richer targeting rules, a minimal-API filter, A/B variants, and typed dynamic config. See [CHANGELOG.md](CHANGELOG.md).
 
 OrionFlag is not an experimentation/analytics platform, not a general config-management pipeline, not a secrets manager (it will *redact* sensitive values in later waves; store secrets in [OrionVault](https://github.com/tunahanaliozturk/OrionVault)/Key Vault), and has no client-side/edge SDKs — server-side .NET only.
 
