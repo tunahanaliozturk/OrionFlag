@@ -8,6 +8,13 @@ All notable changes to OrionFlag are documented in this file. The format is base
 
 ## [Unreleased]
 
+### Changed
+
+- Updated Microsoft.Extensions.DependencyInjection.Abstractions and Microsoft.Extensions.Options
+  to 10.0.12 while retaining net8.0/net9.0/net10.0 support. Updated the test SDK, xUnit and
+  test runner to current stable releases. The NuGet direct/transitive audit found no known
+  vulnerable packages before this maintenance update.
+
 ### Added
 
 - **`FlagSnapshot.IsDefined(flag)`** — tells an undefined flag apart from one configured `false`.
