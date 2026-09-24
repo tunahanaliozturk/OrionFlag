@@ -92,7 +92,7 @@ snapshot.IsDefined("chekout.new-flow"); // false — the flag was never configur
 
 ## Roadmap
 
-The in-process core now includes boolean flags, reloadable snapshots, telemetry, and stable percentage rollout. Planned work: an EF Core store with audited writes via [OrionAudit](https://github.com/tunahanaliozturk/OrionAudit), sensitive values redacted through [OrionShade](https://github.com/tunahanaliozturk/OrionShade), scheduled flags on [OrionClock](https://github.com/tunahanaliozturk/OrionClock), richer targeting rules, a minimal-API filter, A/B variants, and typed dynamic config. See [CHANGELOG.md](CHANGELOG.md).
+Version 1.0 stabilizes the in-process core: boolean flags, reloadable snapshots, telemetry, and opt-in stable percentage rollout. Planned work: an EF Core store with audited writes via [OrionAudit](https://github.com/tunahanaliozturk/OrionAudit), sensitive values redacted through [OrionShade](https://github.com/tunahanaliozturk/OrionShade), scheduled flags on [OrionClock](https://github.com/tunahanaliozturk/OrionClock), richer targeting rules, a minimal-API filter, A/B variants, and typed dynamic config. See [CHANGELOG.md](CHANGELOG.md).
 
 OrionFlag is not an experimentation/analytics platform, not a general config-management pipeline, not a secrets manager (it will *redact* sensitive values in later waves; store secrets in [OrionVault](https://github.com/tunahanaliozturk/OrionVault)/Key Vault), and has no client-side/edge SDKs — server-side .NET only.
 
