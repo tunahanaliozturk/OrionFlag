@@ -8,6 +8,10 @@ In-process feature flags for .NET: boolean flags and stable percentage rollouts 
 
     dotnet add package OrionFlag
 
+OrionFlag references only `Microsoft.Extensions.DependencyInjection.Abstractions`. The console quick start below builds its own container, so it also needs the container package (an ASP.NET Core or Generic Host app already has it):
+
+    dotnet add package Microsoft.Extensions.DependencyInjection
+
 ## Quick start
 
 ```csharp
@@ -32,12 +36,18 @@ var snapshot = flags.GetSnapshot(); // pin for a request: a reload cannot flip i
 bool defined = snapshot.IsDefined("checkout.new-flow");
 ```
 
-Or bind configuration (reloads flow through `IOptionsMonitor`):
+In an ASP.NET Core app, bind configuration instead (reloads flow through `IOptionsMonitor`):
 
 ```csharp
-services.AddOrionFlag();
-services.Configure<OrionFlagOptions>(builder.Configuration.GetSection("OrionFlags"));
+using Moongazing.OrionFlag;
+using Moongazing.OrionFlag.DependencyInjection;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOrionFlag();
+builder.Services.Configure<OrionFlagOptions>(builder.Configuration.GetSection("OrionFlags"));
 ```
+
+Outside ASP.NET Core, `Configure<T>(IConfiguration)` comes from the `Microsoft.Extensions.Options.ConfigurationExtensions` package.
 
 ```json
 {
