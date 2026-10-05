@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="530" viewBox="0 0 1200 530">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: "Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif; fill: #1e1b4b; }
+    .title { font-size: 24px; font-weight: 700; }
+    .subtitle { font-size: 14px; fill: #475569; }
+    .label { font-size: 15px; font-weight: 600; }
+    .small { font-size: 12.5px; fill: #475569; }
+    .code { font-family: "Cascadia Code", Consolas, "SF Mono", monospace; font-size: 13px; fill: #3730a3; }
+    .edge { font-size: 12.5px; fill: #334155; }
+    .step { fill: #eef2ff; stroke: #4f46e5; stroke-width: 2; }
+    .ext { fill: #f0f9ff; stroke: #0284c7; stroke-width: 2; }
+    .ok { fill: #ecfdf5; stroke: #059669; stroke-width: 2; }
+    .fail { fill: #fef2f2; stroke: #dc2626; stroke-width: 2; }
+    .decision { fill: #fffbeb; stroke: #d97706; stroke-width: 2; }
+    .note { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 4 3; }
+    .lane { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 6 5; }
+    .flow { fill: none; stroke: #64748b; stroke-width: 2; marker-end: url(#arrow); }
+    .flow.alt { stroke: #dc2626; stroke-dasharray: 6 4; marker-end: url(#arrow-fail); }
+    .flow.back { stroke-dasharray: 6 4; }
+    .badge { fill: #4f46e5; }
+    .badge-text { font-size: 12px; font-weight: 700; fill: #ffffff; }
+  </style>
+
+  <rect width="1200" height="530" fill="#ffffff"/>
+
+  <text class="title" x="40" y="52">OrionFlag - how the app reaches its flags</text>
+  <text class="subtitle" x="40" y="78">One package: flags come from options, live in an immutable snapshot, and every check is a local read.</text>
+
+  <!-- row A: app, registration, evaluator, snapshot -->
+  <rect class="step" x="40" y="120" width="230" height="90" rx="14"/>
+  <text class="label" x="155" y="152" text-anchor="middle">Your app</text>
+  <text class="small" x="155" y="174" text-anchor="middle">injects IOrionFlags</text>
+  <text class="small" x="155" y="194" text-anchor="middle">or pins GetSnapshot()</text>
+
+  <path class="flow" d="M270,165 L318,165"/>
+
+  <rect class="step" x="320" y="120" width="260" height="90" rx="14"/>
+  <text class="code" x="450" y="156" text-anchor="middle" style="font-variant-ligatures: none">AddOrionFlag(o =&gt; ...)</text>
+  <text class="small" x="450" y="180" text-anchor="middle">TryAddSingleton: FlagDiagnostics</text>
+  <text class="small" x="450" y="198" text-anchor="middle">and IOrionFlags</text>
+
+  <path class="flow" d="M580,165 L628,165"/>
+
+  <rect class="step" x="630" y="120" width="250" height="90" rx="14"/>
+  <text class="label" x="755" y="152" text-anchor="middle">InMemoryOrionFlags</text>
+  <text class="small" x="755" y="174" text-anchor="middle">the IOrionFlags singleton</text>
+  <text class="small" x="755" y="194" text-anchor="middle">holds the current snapshot</text>
+
+  <path class="flow" d="M880,165 L928,165"/>
+  <text class="edge" x="904" y="155" text-anchor="middle">reads</text>
+
+  <rect class="step" x="930" y="120" width="240" height="90" rx="14"/>
+  <text class="label" x="1050" y="152" text-anchor="middle">FlagSnapshot</text>
+  <text class="small" x="1050" y="174" text-anchor="middle">immutable FrozenDictionary</text>
+  <text class="small" x="1050" y="194" text-anchor="middle">IsEnabled, IsEnabledFor, IsDefined</text>
+
+  <!-- row B: configuration, options, diagnostics -->
+  <rect class="ext" x="40" y="280" width="230" height="90" rx="14"/>
+  <text class="label" x="155" y="312" text-anchor="middle">"OrionFlags" section</text>
+  <text class="small" x="155" y="334" text-anchor="middle">appsettings.json or any source,</text>
+  <text class="small" x="155" y="354" text-anchor="middle">bound with Configure&lt;T&gt;(...)</text>
+
+  <path class="flow" d="M270,325 L318,325"/>
+  <text class="edge" x="294" y="315" text-anchor="middle">binds</text>
+
+  <path class="flow" d="M450,210 L450,278"/>
+  <text class="edge" x="462" y="250">configure</text>
+
+  <rect class="ext" x="320" y="280" width="260" height="90" rx="14"/>
+  <text class="label" x="450" y="312" text-anchor="middle">OrionFlagOptions</text>
+  <text class="small" x="450" y="334" text-anchor="middle">Flags, Rollouts, DefaultWhenMissing</text>
+  <text class="small" x="450" y="354" text-anchor="middle">read through IOptionsMonitor</text>
+
+  <path class="flow" d="M580,325 L755,325 L755,212"/>
+  <text class="edge" x="767" y="290">OnChange: rebuild</text>
+  <text class="edge" x="767" y="308">and swap the snapshot</text>
+
+  <path class="flow" d="M1050,210 L1050,278"/>
+  <text class="edge" x="1062" y="250">every decision</text>
+
+  <rect class="step" x="930" y="280" width="240" height="90" rx="14"/>
+  <text class="label" x="1050" y="312" text-anchor="middle">FlagDiagnostics</text>
+  <text class="small" x="1050" y="334" text-anchor="middle">counter orion.flag.evaluations</text>
+  <text class="small" x="1050" y="354" text-anchor="middle">tags: flag, result, defined</text>
+
+  <!-- row C: telemetry consumer and note -->
+  <path class="flow" d="M1050,370 L1050,418"/>
+  <rect class="ext" x="930" y="420" width="240" height="80" rx="14"/>
+  <text class="label" x="1050" y="452" text-anchor="middle">OpenTelemetry</text>
+  <text class="code" x="1050" y="476" text-anchor="middle">Moongazing.OrionFlag</text>
+
+  <rect class="note" x="40" y="420" width="860" height="80" rx="10"/>
+  <text class="small" x="60" y="450">IsEnabled is a lock-free, allocation-free FrozenDictionary read: no network call, no lock, no I/O per check.</text>
+  <text class="small" x="60" y="474">FlagDiagnostics is built on OrionInstrumentation from Orion.Abstractions. Unknown names share one &lt;undefined&gt; tag.</text>
+</svg>
