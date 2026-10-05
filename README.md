@@ -1,20 +1,27 @@
 <p align="center">
-  <img src="docs/logo.png" alt="OrionFlag" width="150" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo.png">
+    <img src="docs/icon.png" alt="OrionFlag logo" width="150">
+  </picture>
 </p>
 
 # OrionFlag
 
 [![CI/CD](https://github.com/tunahanaliozturk/OrionFlag/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/tunahanaliozturk/OrionFlag/actions/workflows/ci-cd.yml)
 [![NuGet](https://img.shields.io/nuget/v/OrionFlag.svg)](https://www.nuget.org/packages/OrionFlag/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-purple.svg)
 
 **Feature flags that evaluate in-process with zero network per check.** A flag lookup is a lock-free, allocation-free read of an immutable snapshot — never a config-file redeploy and never a call to a SaaS console.
 
 Teams reach for flags to ship dark, roll out gradually, and kill a bad feature without a redeploy, but the usual roads hurt: `appsettings.json` + `IOptionsMonitor` is free but a flag change is a config deploy with no per-request stability; a SaaS makes every check a network dependency you must cache, with your rollout rules and audit trail in someone else's console. OrionFlag keeps evaluation local and — in later waves — keeps your audit trail and redaction inside your own database.
 
+![OrionFlag overview: AddOrionFlag registers InMemoryOrionFlags, which reads an immutable FlagSnapshot rebuilt from OrionFlagOptions on every reload; each decision is counted by FlagDiagnostics](docs/diagrams/overview.png)
+
 ## Features
 
 - **In-process evaluation** — `IsEnabled` reads an immutable `FrozenDictionary` snapshot: lock-free, allocation-free, no network. The allocation claim is measured in the suite with `GC.GetAllocatedBytesForCurrentThread()`, including with a `MeterListener` attached.
-- **`IOptionsMonitor` bridge** — flags are `OrionFlagOptions` bound from any config section, so existing `appsettings` boolean flags migrate with no code change and reloads flow through live.
+- **`IOptionsMonitor` bridge** — flags are `OrionFlagOptions` bound from any config section, so existing `appsettings` boolean flags move over by placing them under the `OrionFlags` section, and reloads flow through live.
 - **Per-request snapshots** — capture `GetSnapshot()` at the start of a request and a flag can't flip mid-request even if config reloads underneath you.
 - **Stable percentage rollout** — `IsEnabledFor(flag, subject)` gives a subject the same cohort across requests, snapshots, and processes. A disabled boolean flag always wins; the existing `IsEnabled` API is unchanged. Rollouts use SHA-256 over length-prefixed UTF-8 flag name, salt, and subject; no subject identifier is emitted as a metric tag.
 - **OpenTelemetry by default** — a `Moongazing.OrionFlag` meter with `orion.flag.evaluations`, tagged by the configured flag name, result, and defined status. Undefined names share a `<undefined>` label, so dynamic misses cannot create one metric series per input; `orion.flag.defined` distinguishes a configured flag literally named `<undefined>` from a miss. Both live and pinned-snapshot decisions are recorded once.
@@ -26,6 +33,10 @@ Teams reach for flags to ship dark, roll out gradually, and kill a bad feature w
 dotnet add package OrionFlag
 ```
 
+| Package | What it is |
+|---------|------------|
+| [`OrionFlag`](https://www.nuget.org/packages/OrionFlag/) | `IOrionFlags`, `InMemoryOrionFlags`, `FlagSnapshot`, `OrionFlagOptions` / `PercentageRolloutOptions`, `FlagDiagnostics` and `AddOrionFlag`. Depends on `Orion.Abstractions`, `Microsoft.Extensions.Options` and `Microsoft.Extensions.DependencyInjection.Abstractions`. |
+
 ## Usage
 
 Configure in code, from configuration, or both:
@@ -35,7 +46,10 @@ using Moongazing.OrionFlag;
 using Moongazing.OrionFlag.DependencyInjection;
 
 services.AddOrionFlag(o => o.Flags["checkout.new-flow"] = true);
-// or bind an appsettings section (reloads flow through IOptionsMonitor):
+
+// or register without in-code flags and bind an appsettings section
+// (reloads flow through IOptionsMonitor):
+services.AddOrionFlag();
 services.Configure<OrionFlagOptions>(Configuration.GetSection("OrionFlags"));
 ```
 
@@ -64,6 +78,8 @@ public sealed class CheckoutEndpoint(IOrionFlags flags)
 
 Pin a snapshot for a whole request so every check is consistent:
 
+![A config reload rebuilds the snapshot and swaps it in; a named options reload is ignored, an invalid rollout throws and keeps the previous snapshot, and a pinned snapshot never changes](docs/diagrams/reload-snapshot.png)
+
 ```csharp
 var snapshot = flags.GetSnapshot();
 if (snapshot.IsEnabled("checkout.new-flow")) { /* ... */ }
@@ -71,14 +87,16 @@ if (snapshot.IsEnabled("checkout.new-flow")) { /* ... */ }
 if (snapshot.IsEnabled("checkout.new-flow")) { /* same answer */ }
 ```
 
-For a gradual rollout, pass a stable, non-empty subject key (for example your internal customer ID):
+![How IsEnabled and IsEnabledFor decide: an undefined flag serves DefaultWhenMissing, a configured false always wins, and a rollout hashes the subject into a bucket compared with Percentage * 100](docs/diagrams/evaluate-flag.png)
+
+For a gradual rollout, pass a stable, non-empty subject key (for example your internal customer ID as a string):
 
 ```csharp
 var snapshot = flags.GetSnapshot();
-if (snapshot.IsEnabledFor("checkout.new-flow", customer.Id)) { /* new path */ }
+if (snapshot.IsEnabledFor("checkout.new-flow", customerId)) { /* new path */ }
 ```
 
-`Percentage` is a whole number from 0 to 100. The configured boolean flag is the kill switch: `false` disables everyone; `true` without a rollout enables everyone. `IsEnabled(flag)` remains the context-free boolean check and does **not** apply the rollout, so call `IsEnabledFor` at every subject-specific decision point. A rollout referencing an absent flag or an out-of-range percentage fails configuration. Change `Salt` only when you intentionally want to reshuffle cohorts. This is a deterministic rollout, not an authorization boundary or an experiment analytics service; do not use it for security decisions.
+`Percentage` is a whole number from 0 to 100. The configured boolean flag is the kill switch: `false` disables everyone; `true` without a rollout enables everyone. `IsEnabled(flag)` remains the context-free boolean check and does **not** apply the rollout, so call `IsEnabledFor` at every subject-specific decision point. A rollout referencing an absent flag, an out-of-range percentage or a null `Salt` fails configuration with an `ArgumentException`: when `IOrionFlags` is first resolved, or on a reload, where the previous snapshot keeps serving. Change `Salt` only when you intentionally want to reshuffle cohorts. This is a deterministic rollout, not an authorization boundary or an experiment analytics service; do not use it for security decisions.
 
 An undefined flag is not the same thing as a flag configured `false`, even though both read `false`:
 
@@ -103,6 +121,7 @@ Follows [Semantic Versioning](https://semver.org/). Multi-targets `net8.0`, `net
 ## Documentation
 
 - [CHANGELOG.md](CHANGELOG.md) — release notes.
+- [SECURITY.md](SECURITY.md) — how to report a vulnerability privately.
 
 ## Contributing
 
